@@ -1,9 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 #include <math.h>
 
-#define BLOCK_SIZE 16
+#define message_SIZE 16
 
 typedef int word;
 /*
@@ -21,12 +22,12 @@ I was too lazy to calculate them myself, but I may calculate them myself later
 */
 
 char* getWordBits(word w);
-void printBlock(word* block);
+void printmessage(word* message);
 
 word rotateRight(word input, int amount);
 word addMod(word a, word b);
 word fracCubeRoot(word n);
-void fixBlock(word* block, int size, int endPlace);
+void fixMessage(word* message, int size, int endPlaceWord, int endPlaceChar);
 
 word Ch(word x, word y, word z);
 word Maj(word x, word y, word z);
@@ -50,22 +51,29 @@ int main(){
 	int continueReading = 1;
 	int fileSize = 0;
 
+	int fileSizeToAdd;
+
+	word hash[] = {0x6a09e667, 0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+
 	fp = fopen("test.txt", "r");
 
-	word blockBuffer[BLOCK_SIZE];
+	word messageBuffer[message_SIZE];
 
 	while( continueReading ){
-		for(int x = 0; x < BLOCK_SIZE; x++){
-			size_t toAdd = fread(blockBuffer + x, sizeof(char), 4, fp);
-			fileSize += toAdd;
-			printf("%ld\n",toAdd);
+		fileSizeToAdd = 0;
+		for(int x = 0; x < message_SIZE; x++){
+			size_t toAdd = fread(messageBuffer + x, sizeof(char), sizeof(word), fp);
+			fileSizeToAdd += toAdd;
 			if(toAdd != 4){
-				fixBlock(blockBuffer, fileSize, toAdd);
+				fileSize += fileSizeToAdd;
+				fixMessage(messageBuffer, fileSize, x, fileSizeToAdd % sizeof(word));
 				continueReading = 0;
 				break;
 			}
 		}
-		printf()
+		if(fileSizeToAdd == message_SIZE * sizeof(word)) fileSize += fileSizeToAdd;
+
+
 
 	}
 
@@ -89,9 +97,9 @@ char* getWordBits(word w){
 	return toRet;
 }
 
-void printBlock(word* block){
-	for(int x = 0; x < BLOCK_SIZE; x++){
-		printf("%s|",getWordBits(block[x]));
+void printmessage(word* message){
+	for(int x = 0; x < message_SIZE; x++){
+		printf("%s|",getWordBits(message[x]));
 	}
 	printf("\n");
 }
@@ -108,8 +116,35 @@ word rotateRight(word input, int amount){
 	return currentWord;
 }
 
-void fixBlock(word* block, int size, int endPlace){
+//This fixes the message in case it is smaller than the message size
+
+void fixMessage(word* message, int size, int endPlaceWord, int endPlaceChar){
+	printf("%d\t%d\n",endPlaceWord,endPlaceChar);
+
+	printf("%s\n",getWordBits(message[endPlaceWord]));
+
+
+	message[endPlaceWord] = message[endPlaceWord] & (0xffffffff << (sizeof(word) * 8) - (endPlaceChar * 8));
+
+	//printf("%s\n",getWordBits(message[endPlaceWord]));
+
+	message[endPlaceWord] = message[endPlaceWord] ^ (1 << ( (sizeof(word) * 8) - (endPlaceChar * 8) - 1));
+
+	//printf("%s\n",getWordBits(message[endPlaceWord]));
+
+	for(int x = endPlaceWord + 1; x < message_SIZE - 2; x++){
+		message[x] = message[x] & 0;
+	}
+
 	printf("%d\n",size);
+
+	int64_t longLongSize = (int64_t) size;
+
+	message[message_SIZE - 2] = longLongSize >> 32;
+	message[message_SIZE - 1] = longLongSize & 0xffffffff;
+
+	printmessage(message);
+
 }
 
 word addMod(word a, word b){
