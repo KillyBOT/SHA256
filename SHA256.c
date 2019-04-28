@@ -55,7 +55,8 @@ int main(){
 	int fileSize = 0;
 	int fileSizeToAdd;
 
-	word hash[] = {0x6a09e667, 0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+	word hash[8] = {0x6a09e667, 0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+	word tempHash[8];
 	word addToHash[8];
 
 	word messageBuffer[MESSAGE_SIZE];
@@ -64,7 +65,8 @@ int main(){
 	word testMessage[MESSAGE_SIZE] = {0x61626380, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000018};
 	printMessage(testMessage);
 
-	printf("%s\n", getWordBits('a'));
+	printf("%s\n", getWordBits(1));
+	//printf("%x\n", rotateRight(hash[0],8));
 
 	fp = fopen("test1.txt", "r");
 
@@ -86,55 +88,78 @@ int main(){
 		}
 		if(fileSizeToAdd == MESSAGE_SIZE) fileSize += fileSizeToAdd;
 
-		//Now, we set the rest of the 
+		//Now, we set the first 16 blocks to the message
 
 		for(int x = 0; x < MESSAGE_SIZE; x++){
 			block[x] = testMessage[x];
 		}
 
+		//For the rest of the blocks, we set them to specific values
+
 		for(int x = MESSAGE_SIZE; x < BLOCK_SIZE; x++){
-			word stuffToAdd[4] = {sigmoid1(block[x-2]), block[x-7],sigmoid0(block[x-15]),block[x-16]};
-			block[x] = addModMore(stuffToAdd, 4);
+			//word stuffToAdd[4] = {sigmoid1(block[x-2]), block[x-7],sigmoid0(block[x-15]),block[x-16]};
+			//block[x] = addModMore(stuffToAdd, 4);
+
+			block[x] = sigmoid1(block[x-2]) + block[x - 7] + sigmoid0(block[x-15]) + block[x-16];
 		}
 
 		//Now, we need to do BLOCK_SIZE rounds of just switching stuff around.
+		//This is the main loop!
 
-		for(int x = 0; x < BLOCK_SIZE; x++){
+		//First, we need to set a temporary starting hash
+
+		for(int x = 0; x < 8; x++){
+			tempHash[x] = hash[x];
+		}
 
 			//Now, we create new variables that we will add to the hash later
 			//We set these variables currently to the current hash
 
-			for(int x = 0; x < 8; x++){
-				addToHash[x] = hash[x];
-			}
+		for(int x = 0; x < 8; x++){
+			addToHash[x] = tempHash[x];
+		}
 
-			for(int y = 0; y < 8; y++){
-				printf("%x ", hash[y]);
-			}
-			printf("\n");
+		printf("\n");
 
+		for(int j = 0; j < BLOCK_SIZE; j++){
 
-			word toAdd1[5] = {addToHash[7], sig1(addToHash[4]) , Ch(addToHash[4],addToHash[5],addToHash[6]), k[x], block[x]};
-			word t1 = addModMore(toAdd1, 5);
+			//word toAdd1[5] = {addToHash[7], sig1(addToHash[4]) , Ch(addToHash[4],addToHash[5],addToHash[6]), k[j], block[j]};
+			//word t1 = addModMore(toAdd1, 5);
 
-			word t2 = addMod(sig0(addToHash[0]), Maj(addToHash[0],addToHash[1],addToHash[2]));
+			word t1 = addToHash[7] + sig1(addToHash[4]) + Ch(addToHash[4],addToHash[5],addToHash[6]) + k[j] + block[j];
+
+			//word t2 = addMod(sig0(addToHash[0]), Maj(addToHash[0],addToHash[1],addToHash[2]));
+
+			word t2 = sig0(addToHash[0]) + Maj(addToHash[0],addToHash[1],addToHash[2]);
 
 			addToHash[7] = addToHash[6];
 			addToHash[6] = addToHash[5];
 			addToHash[5] = addToHash[4];
-			addToHash[4] = addMod(addToHash[3], t1);
+			addToHash[4] = addToHash[3] + t1;
 			addToHash[3] = addToHash[2];
 			addToHash[2] = addToHash[1];
 			addToHash[1] = addToHash[0];
-			addToHash[0] = addMod(t1,t2);
+			addToHash[0] = t1 + t2;
+
+			//We add these new values to the previous hash
 
 			for(int x = 0; x < 8; x++){
-				hash[x] = addMod(hash[x], addToHash[x]);
+				tempHash[x] = tempHash[x] + addToHash[x];
 			}
+
+			//This is just for printing the hash as it goes through the main loop
+
+			printf("j = %d\t",j);
+			for(int x = 0; x < 8; x++){
+				printf("%x ", addToHash[x]);
+			}
+			printf("\n");
 
 		}
 
-		//Finally, we just set the hash to the old hash mod plus the new values we got
+		for(int x = 0; x < 8; x++){
+			hash[x] = tempHash[x] + addToHash[x];
+		}
 
 	}
 
@@ -143,7 +168,7 @@ int main(){
 	printf("This is your finished hash: ");
 
 	for(int x = 0; x < 8; x++){
-		printf("%x ", hash[x]);
+		printf("%8.x ", hash[x]);
 	}
 
 	printf("\n");
@@ -170,7 +195,8 @@ char* getWordBits(word w){
 
 void printMessage(word* message){
 	for(int x = 0; x < MESSAGE_SIZE; x++){
-		printf("%s|",getWordBits(message[x]));
+		//printf("%s|",getWordBits(message[x]));
+		printf("%08x ",message[x]);
 	}
 	printf("\n");
 }
@@ -182,6 +208,9 @@ word rotateRight(word input, int amount){
 		toSave = currentWord & 1;
 		toSave = toSave << 31;
 		currentWord = currentWord >> 1;
+		/*toSave = currentWord & 0x80000000;
+		toSave = toSave >> 31;
+		currentWord = currentWord << 1;*/
 		currentWord = currentWord | toSave;
 	}
 	return currentWord;
@@ -194,11 +223,13 @@ void fixMessage(word* message, int size, int endPlaceWord, int endPlaceChar){
 	//printf("%d\t%d\n",endPlaceWord,endPlaceChar);
 	//printf("%s\n",getWordBits(message[endPlaceWord]));
 
-	message[endPlaceWord] = message[endPlaceWord] & (0xffffffff << endPlaceChar * 8);
+	printMessage(message);
+
+	message[endPlaceWord] = message[endPlaceWord] & (0xffffffff >> (sizeof(word) * 8) - (endPlaceChar * 8));
 
 	//printf("%s\n",getWordBits(message[endPlaceWord]));
 
-	message[endPlaceWord] = message[endPlaceWord] ^ (1 << ( (sizeof(word) * 8) - (endPlaceChar * 8) - 1));
+	message[endPlaceWord] = message[endPlaceWord] | (1 << endPlaceChar * 8);
 
 	//printf("%s\n",getWordBits(message[endPlaceWord]));
 
@@ -208,9 +239,9 @@ void fixMessage(word* message, int size, int endPlaceWord, int endPlaceChar){
 
 	//printf("%d\n",size);
 
-	int64_t longLongSize = (int64_t) size;
+	int64_t longLongSize = (int64_t) size * 8;
 
-	message[MESSAGE_SIZE - 2] = longLongSize >> 32;
+	message[MESSAGE_SIZE - 2] = longLongSize << 32;
 	message[MESSAGE_SIZE - 1] = longLongSize & 0xffffffff;
 
 	//printMessage(message);
@@ -218,7 +249,7 @@ void fixMessage(word* message, int size, int endPlaceWord, int endPlaceChar){
 }
 
 word addMod(word a, word b){
-	return (a + b) % 0x100000000;
+	return (word)((int64_t)(a + b) % 0x100000000);
 }
 
 word addModMore(word* toAdd, int size){
@@ -227,7 +258,7 @@ word addModMore(word* toAdd, int size){
 }
 
 word Ch(word x, word y, word z){
-	return (x & y) ^ (!x & z);
+	return (x & y) ^ ((~x) & z);
 }
 
 word Maj(word x, word y, word z){
