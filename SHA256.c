@@ -6,6 +6,7 @@
 
 #define MESSAGE_SIZE 16
 #define BLOCK_SIZE 64
+#define HASH_SIZE 8
 
 typedef int word;
 /*
@@ -33,11 +34,14 @@ void fixMessage(word* message, int size, int endPlaceWord, int endPlaceChar);
 
 word Ch(word x, word y, word z);
 word Maj(word x, word y, word z);
-word sig0(word x);
-word sig1(word x);
+word sigma0(word x);
+word sigma1(word x);
 word sigmoid0(word x);
 word sigmoid1(word x);
-
+/*
+These are the fractional parts of the cube root of the first 64 prime numbers in hex.
+I was too lazy to calculate them myself, but I may calculate them myself later
+*/
 word k[] = {0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,
 0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,
 0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,
@@ -54,27 +58,28 @@ int main(){
 	int continueReading = 1;
 	int fileSize = 0;
 	int fileSizeToAdd;
-
-	word hash[8] = {0x6a09e667, 0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+	//Why these values? They're the first fractional part of the square root of the first 8 prime numbers, I think...
+	word hash[HASH_SIZE] = {0x6a09e667, 0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
 	word tempHash[8];
-	word addToHash[8];
+	word addToHash[HASH_SIZE];
+	word messageBuffer[MESSAGE_SIZE];;
 
-	word messageBuffer[MESSAGE_SIZE];
 	word block[BLOCK_SIZE];
 
-	word testMessage[MESSAGE_SIZE] = {0x61626380, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000018};
+	word testMessage[MESSAGE_SIZE] = {0x61626364, 0x62636465, 0x63646566, 0x64656667, 0x65666768, 0x66676869, 0x6768696a, 0x68696a6b, 0x696a6b6c, 0x6a6b6c6d, 0x6b6c6d6e, 0x6c6d6e6f, 0x6d6e6f70, 0x6e6f7071, 0x80000000, 0x00000000};
 	printMessage(testMessage);
 
-	printf("%s\n", getWordBits(1));
+	//printf("%x\n", rotateRight(0x05,3));
+	//printf("%x\n", 0xffffffff >> 8);
 	//printf("%x\n", rotateRight(hash[0],8));
 
 	fp = fopen("test1.txt", "r");
 
-	while( continueReading ){
+	//while( continueReading ){
 
 		//First, we read the text in 512 bit blocks, and if we reach the end we pad the text out so that it is 512 bits
 
-		fileSizeToAdd = 0;
+		/*fileSizeToAdd = 0;
 		for(int x = 0; x < MESSAGE_SIZE; x++){
 			size_t toAdd = fread(messageBuffer, sizeof(char), sizeof(word) * MESSAGE_SIZE, fp);
 			fileSizeToAdd += toAdd;
@@ -86,7 +91,7 @@ int main(){
 				break;
 			}
 		}
-		if(fileSizeToAdd == MESSAGE_SIZE) fileSize += fileSizeToAdd;
+		if(fileSizeToAdd == MESSAGE_SIZE) fileSize += fileSizeToAdd;*/
 
 		//Now, we set the first 16 blocks to the message
 
@@ -115,22 +120,22 @@ int main(){
 			//Now, we create new variables that we will add to the hash later
 			//We set these variables currently to the current hash
 
-		for(int x = 0; x < 8; x++){
-			addToHash[x] = tempHash[x];
+		for(int x = 0; x < HASH_SIZE; x++){
+			addToHash[x] = hash[x];
 		}
 
 		printf("\n");
 
 		for(int j = 0; j < BLOCK_SIZE; j++){
 
-			//word toAdd1[5] = {addToHash[7], sig1(addToHash[4]) , Ch(addToHash[4],addToHash[5],addToHash[6]), k[j], block[j]};
+			//word toAdd1[5] = {addToHash[7], sigma1(addToHash[4]) , Ch(addToHash[4],addToHash[5],addToHash[6]), k[j], block[j]};
 			//word t1 = addModMore(toAdd1, 5);
 
-			word t1 = addToHash[7] + sig1(addToHash[4]) + Ch(addToHash[4],addToHash[5],addToHash[6]) + k[j] + block[j];
+			word t1 = addToHash[7] + sigma1(addToHash[4]) + Ch(addToHash[4],addToHash[5],addToHash[6]) + k[j] + block[j];
 
-			//word t2 = addMod(sig0(addToHash[0]), Maj(addToHash[0],addToHash[1],addToHash[2]));
+			//word t2 = addMod(sigma0(addToHash[0]), Maj(addToHash[0],addToHash[1],addToHash[2]));
 
-			word t2 = sig0(addToHash[0]) + Maj(addToHash[0],addToHash[1],addToHash[2]);
+			word t2 = sigma0(addToHash[0]) + Maj(addToHash[0],addToHash[1],addToHash[2]);
 
 			addToHash[7] = addToHash[6];
 			addToHash[6] = addToHash[5];
@@ -143,25 +148,25 @@ int main(){
 
 			//We add these new values to the previous hash
 
-			for(int x = 0; x < 8; x++){
+			/*for(int x = 0; x < HASH_SIZE; x++){
 				tempHash[x] = tempHash[x] + addToHash[x];
-			}
+			}*/
 
 			//This is just for printing the hash as it goes through the main loop
 
 			printf("j = %d\t",j);
-			for(int x = 0; x < 8; x++){
-				printf("%x ", addToHash[x]);
+			for(int x = 0; x < HASH_SIZE; x++){
+				printf("%x\t", addToHash[x]);
 			}
 			printf("\n");
 
 		}
 
-		for(int x = 0; x < 8; x++){
-			hash[x] = tempHash[x] + addToHash[x];
+		for(int x = 0; x < HASH_SIZE; x++){
+			hash[x] += addToHash[x];
 		}
 
-	}
+	//}
 
 	//This is for printing the hash
 
@@ -201,19 +206,18 @@ void printMessage(word* message){
 	printf("\n");
 }
 
-word rotateRight(word input, int amount){
-	word currentWord = input;
-	int toSave;
-	for(int x = 0; x < amount; x++){
-		toSave = currentWord & 1;
-		toSave = toSave << 31;
-		currentWord = currentWord >> 1;
-		/*toSave = currentWord & 0x80000000;
-		toSave = toSave >> 31;
-		currentWord = currentWord << 1;*/
-		currentWord = currentWord | toSave;
-	}
-	return currentWord;
+word rotateRight(word toRotate, int amount){
+    word temp;
+    word toRet = toRotate;
+    for(int b = 0; b < amount; b++){
+        temp = toRet & 0x01;
+        temp = temp << 31;
+        toRet = toRet >> 1;
+        toRet = toRet & 0x7fffffff;
+        toRet = toRet | temp;
+    }
+
+    return toRet;
 }
 
 //This fixes the message in case it is smaller than the message size
@@ -265,18 +269,20 @@ word Maj(word x, word y, word z){
 	return (x & y) ^ (x & z) ^ (y & z);
 }
 
-word sig0(word x){
+word sigma0(word x){
 	return rotateRight(x, 2) ^ rotateRight(x, 13) ^ rotateRight(x, 22);
 }
 
-word sig1(word x){
+word sigma1(word x){
 	return rotateRight(x, 6) ^ rotateRight(x, 11) ^ rotateRight(x, 25);
 }
 
 word sigmoid0(word x){
-	return rotateRight(x, 7) ^ rotateRight(x, 18) ^ (x >> 3);
+	//printf("%s %s %s %s\n",getWordBits(x),getWordBits(rotateRight(x, 7)),getWordBits(rotateRight(x,18)),getWordBits(((x >> 3) & 0x1fffffff)));
+	return rotateRight(x, 7) ^ rotateRight(x, 18) ^ ((x >> 3) & 0x1fffffff);
 }
 
 word sigmoid1(word x){
-	return rotateRight(x, 17) ^ rotateRight(x, 19) ^ (x >> 10);
+	//printf("%s %s %s %s\n",getWordBits(x),getWordBits(rotateRight(x, 17)),getWordBits(rotateRight(x,19)),getWordBits((x >> 10) & 0x003fffff));
+	return rotateRight(x, 17) ^ rotateRight(x, 19) ^ ((x >> 10) & 0x003fffff);
 }
