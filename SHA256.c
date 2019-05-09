@@ -31,6 +31,7 @@ word addMod(word a, word b);
 word addModMore(word* toAdd, int size);
 word fracCubeRoot(word n);
 void fixMessage(word* message, int size, int endPlaceWord, int endPlaceChar);
+word flipBytes(word toFlip);
 
 word Ch(word x, word y, word z);
 word Maj(word x, word y, word z);
@@ -51,53 +52,120 @@ word k[] = {0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x
 0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,
 0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2};
 
-int main(){
+int main(int argc, char** argv){
 
 	FILE* fp;
 
 	int continueReading = 1;
+	int paddingNext = 0;
 	int fileSize = 0;
 	int fileSizeToAdd;
 	//Why these values? They're the first fractional part of the square root of the first 8 prime numbers, I think...
 	word hash[HASH_SIZE] = {0x6a09e667, 0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
 	word tempHash[8];
 	word addToHash[HASH_SIZE];
-	word messageBuffer[MESSAGE_SIZE];;
+	word messageBuffer[MESSAGE_SIZE];
+	//This is when you can't fit the padding into the last 2 words, so you need a whole new message, which is annoying.
+	word paddingMessageBuffer[MESSAGE_SIZE];
+
+	for(int x = 0; x < MESSAGE_SIZE; x++) paddingMessageBuffer[x] = 0;
 
 	word block[BLOCK_SIZE];
 
 	word testMessage[MESSAGE_SIZE] = {0x61626364, 0x62636465, 0x63646566, 0x64656667, 0x65666768, 0x66676869, 0x6768696a, 0x68696a6b, 0x696a6b6c, 0x6a6b6c6d, 0x6b6c6d6e, 0x6c6d6e6f, 0x6d6e6f70, 0x6e6f7071, 0x80000000, 0x00000000};
-	printMessage(testMessage);
 
 	//printf("%x\n", rotateRight(0x05,3));
 	//printf("%x\n", 0xffffffff >> 8);
 	//printf("%x\n", rotateRight(hash[0],8));
 
-	fp = fopen("test1.txt", "r");
+	if(argc > 1) fp = fopen(argv[1], "r");
+	else fp = fopen("test1.txt","r");
 
-	//while( continueReading ){
+	while( continueReading ){
 
 		//First, we read the text in 512 bit blocks, and if we reach the end we pad the text out so that it is 512 bits
 
-		/*fileSizeToAdd = 0;
-		for(int x = 0; x < MESSAGE_SIZE; x++){
-			size_t toAdd = fread(messageBuffer, sizeof(char), sizeof(word) * MESSAGE_SIZE, fp);
-			fileSizeToAdd += toAdd;
-			if(toAdd != 4){
-				fileSize += fileSizeToAdd;
-				fixMessage(messageBuffer, fileSize, x, fileSizeToAdd % sizeof(word));
-				printMessage(messageBuffer);
-				continueReading = 0;
-				break;
+		fileSizeToAdd = 0;
+		if(!paddingNext){
+			for(int x = 0; x < MESSAGE_SIZE; x++){
+				int toAdd = fread(messageBuffer + x, sizeof(char), 4, fp);
+				messageBuffer[x] = flipBytes(messageBuffer[x]);
+				fileSize += toAdd * 8;
+				//printf("%x\t%x\n",toAdd,flipBytes(toAdd));
+
+				//It's padding time! Yay!
+				if(toAdd != sizeof(word)){
+
+					//fileSize += toAdd *;
+
+					printMessage(messageBuffer);
+					printf("%d\n",toAdd);
+					word temp;
+					if(fileSize % 32 == 0){
+						messageBuffer[x] = 0x80000000;
+					}
+					else{
+						temp = (0xffffffff << (32 - fileSize % 32));
+						messageBuffer[x] &= temp;
+						printf("%d %x\n",fileSize % 32, temp);
+
+						temp = 0x80000000;
+						temp = rotateRight(temp, (fileSize % 32) );
+						messageBuffer[x] = messageBuffer[x] |temp;
+					}
+					
+					printMessage(messageBuffer);
+					for(int rest = x + 1; rest < MESSAGE_SIZE; rest++) messageBuffer[rest] = 0;
+					printMessage(messageBuffer);
+
+
+					if(x < MESSAGE_SIZE - 2){
+
+						int64_t longLongSize = (int64_t) fileSize;
+
+						messageBuffer[MESSAGE_SIZE - 2] = longLongSize << 32;
+						messageBuffer[MESSAGE_SIZE - 1] = longLongSize & 0xffffffff;
+
+						printMessage(messageBuffer);
+
+						//printf("%x %x\n",messageBuffer[MESSAGE_SIZE - 2],messageBuffer[MESSAGE_SIZE - 1]);
+
+						continueReading = 0;
+					} else {
+
+						printf("Padding needed!\n");
+						int64_t longLongSize = (int64_t) fileSize;
+
+						paddingMessageBuffer[MESSAGE_SIZE - 2] = longLongSize << 32;
+						paddingMessageBuffer[MESSAGE_SIZE - 1] = longLongSize & 0xffffffff;
+					}
+					printf("%d\n",fileSize);
+					
+					break;
+				}
 			}
+			if(fileSizeToAdd == MESSAGE_SIZE) fileSize += fileSizeToAdd;
+
 		}
-		if(fileSizeToAdd == MESSAGE_SIZE) fileSize += fileSizeToAdd;*/
 
 		//Now, we set the first 16 blocks to the message
 
-		for(int x = 0; x < MESSAGE_SIZE; x++){
-			block[x] = testMessage[x];
+		if(paddingNext){
+			for(int x = 0; x < MESSAGE_SIZE; x++){
+				block[x] = paddingMessageBuffer[x];
+			}
+			printMessage(paddingMessageBuffer);
+			printf("This is the padding step");
+			continueReading = 0;
 		}
+		else{
+			for(int x = 0; x < MESSAGE_SIZE; x++){
+				block[x] = messageBuffer[x];
+			}
+			printMessage(messageBuffer);
+
+		}
+
 
 		//For the rest of the blocks, we set them to specific values
 
@@ -146,12 +214,6 @@ int main(){
 			addToHash[1] = addToHash[0];
 			addToHash[0] = t1 + t2;
 
-			//We add these new values to the previous hash
-
-			/*for(int x = 0; x < HASH_SIZE; x++){
-				tempHash[x] = tempHash[x] + addToHash[x];
-			}*/
-
 			//This is just for printing the hash as it goes through the main loop
 
 			printf("j = %d\t",j);
@@ -166,7 +228,11 @@ int main(){
 			hash[x] += addToHash[x];
 		}
 
-	//}
+		if(paddingMessageBuffer[MESSAGE_SIZE - 1] != 0){
+			paddingNext = 1;
+		}
+
+	}
 
 	//This is for printing the hash
 
@@ -229,9 +295,9 @@ void fixMessage(word* message, int size, int endPlaceWord, int endPlaceChar){
 
 	printMessage(message);
 
-	message[endPlaceWord] = message[endPlaceWord] & (0xffffffff >> (sizeof(word) * 8) - (endPlaceChar * 8));
+	/*message[endPlaceWord] = message[endPlaceWord] & (0xffffffff >> (sizeof(word) * 8) - (endPlaceChar * 8));
 
-	//printf("%s\n",getWordBits(message[endPlaceWord]));
+	printf("%x\n",message[endPlaceWord]);
 
 	message[endPlaceWord] = message[endPlaceWord] | (1 << endPlaceChar * 8);
 
@@ -239,7 +305,7 @@ void fixMessage(word* message, int size, int endPlaceWord, int endPlaceChar){
 
 	for(int x = endPlaceWord + 1; x < MESSAGE_SIZE - 2; x++){
 		message[x] = message[x] & 0;
-	}
+	}*/
 
 	//printf("%d\n",size);
 
@@ -285,4 +351,22 @@ word sigmoid0(word x){
 word sigmoid1(word x){
 	//printf("%s %s %s %s\n",getWordBits(x),getWordBits(rotateRight(x, 17)),getWordBits(rotateRight(x,19)),getWordBits((x >> 10) & 0x003fffff));
 	return rotateRight(x, 17) ^ rotateRight(x, 19) ^ ((x >> 10) & 0x003fffff);
+}
+
+word flipBytes(word toFlip){
+	word flipped = 0;
+	word remainder = toFlip;
+	word temp;
+
+	for(int x = 0; x < 3; x++){
+		temp = remainder & 0xff000000;
+		flipped = flipped | temp;
+		flipped = flipped >> 8;
+		remainder = remainder << 8;
+	}
+
+	temp = remainder & 0xff000000;
+	flipped = flipped | temp;
+
+	return flipped;
 }
