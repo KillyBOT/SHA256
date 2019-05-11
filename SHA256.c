@@ -98,8 +98,8 @@ int main(int argc, char** argv){
 
 					//fileSize += toAdd *;
 
-					printMessage(messageBuffer);
-					printf("%d\n",toAdd);
+					//printMessage(messageBuffer);
+					//printf("%d\n",toAdd);
 					word temp;
 					if(fileSize % 32 == 0){
 						messageBuffer[x] = 0x80000000;
@@ -107,16 +107,16 @@ int main(int argc, char** argv){
 					else{
 						temp = (0xffffffff << (32 - fileSize % 32));
 						messageBuffer[x] &= temp;
-						printf("%d %x\n",fileSize % 32, temp);
+						//printf("%d %x\n",fileSize % 32, temp);
 
 						temp = 0x80000000;
 						temp = rotateRight(temp, (fileSize % 32) );
 						messageBuffer[x] = messageBuffer[x] |temp;
 					}
 					
-					printMessage(messageBuffer);
+					//printMessage(messageBuffer);
 					for(int rest = x + 1; rest < MESSAGE_SIZE; rest++) messageBuffer[rest] = 0;
-					printMessage(messageBuffer);
+					//printMessage(messageBuffer);
 
 
 					if(x < MESSAGE_SIZE - 2){
@@ -126,25 +126,24 @@ int main(int argc, char** argv){
 						messageBuffer[MESSAGE_SIZE - 2] = longLongSize << 32;
 						messageBuffer[MESSAGE_SIZE - 1] = longLongSize & 0xffffffff;
 
-						printMessage(messageBuffer);
+						//printMessage(messageBuffer);
 
 						//printf("%x %x\n",messageBuffer[MESSAGE_SIZE - 2],messageBuffer[MESSAGE_SIZE - 1]);
 
 						continueReading = 0;
 					} else {
 
-						printf("Padding needed!\n");
+						//printf("Padding needed!\n");
 						int64_t longLongSize = (int64_t) fileSize;
 
 						paddingMessageBuffer[MESSAGE_SIZE - 2] = longLongSize << 32;
 						paddingMessageBuffer[MESSAGE_SIZE - 1] = longLongSize & 0xffffffff;
 					}
-					printf("%d\n",fileSize);
+					//printf("%d\n",fileSize);
 					
 					break;
 				}
 			}
-			if(fileSizeToAdd == MESSAGE_SIZE) fileSize += fileSizeToAdd;
 
 		}
 
@@ -154,15 +153,15 @@ int main(int argc, char** argv){
 			for(int x = 0; x < MESSAGE_SIZE; x++){
 				block[x] = paddingMessageBuffer[x];
 			}
-			printMessage(paddingMessageBuffer);
-			printf("This is the padding step");
+			//printMessage(paddingMessageBuffer);
+			//printf("This is the padding step");
 			continueReading = 0;
 		}
 		else{
 			for(int x = 0; x < MESSAGE_SIZE; x++){
 				block[x] = messageBuffer[x];
 			}
-			printMessage(messageBuffer);
+			//printMessage(messageBuffer);
 
 		}
 
@@ -192,7 +191,7 @@ int main(int argc, char** argv){
 			addToHash[x] = hash[x];
 		}
 
-		printf("\n");
+		//printf("\n");
 
 		for(int j = 0; j < BLOCK_SIZE; j++){
 
@@ -216,11 +215,11 @@ int main(int argc, char** argv){
 
 			//This is just for printing the hash as it goes through the main loop
 
-			printf("j = %d\t",j);
+			/*printf("j = %d\t",j);
 			for(int x = 0; x < HASH_SIZE; x++){
 				printf("%x\t", addToHash[x]);
 			}
-			printf("\n");
+			printf("\n");*/
 
 		}
 
@@ -239,7 +238,7 @@ int main(int argc, char** argv){
 	printf("This is your finished hash: ");
 
 	for(int x = 0; x < 8; x++){
-		printf("%8.x ", hash[x]);
+		printf("%8.X ", hash[x]);
 	}
 
 	printf("\n");
@@ -293,7 +292,7 @@ void fixMessage(word* message, int size, int endPlaceWord, int endPlaceChar){
 	//printf("%d\t%d\n",endPlaceWord,endPlaceChar);
 	//printf("%s\n",getWordBits(message[endPlaceWord]));
 
-	printMessage(message);
+	//printMessage(message);
 
 	/*message[endPlaceWord] = message[endPlaceWord] & (0xffffffff >> (sizeof(word) * 8) - (endPlaceChar * 8));
 
@@ -360,13 +359,22 @@ word flipBytes(word toFlip){
 
 	for(int x = 0; x < 3; x++){
 		temp = remainder & 0xff000000;
+		//printf("%x\n",flipped);
 		flipped = flipped | temp;
+		//printf("%x\t%x\t%x\n",flipped, remainder, temp);
+
 		flipped = flipped >> 8;
+		flipped = flipped & 0x00ffffff;
 		remainder = remainder << 8;
+
 	}
 
 	temp = remainder & 0xff000000;
+
 	flipped = flipped | temp;
+
+	//printf("%x\t%x\n",flipped,temp);
+
 
 	return flipped;
 }
