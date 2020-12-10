@@ -7,6 +7,7 @@
 #define MESSAGE_SIZE 16
 #define BLOCK_SIZE 64
 #define HASH_SIZE 8
+#define WORD_SIZE 4
 
 typedef int word;
 
@@ -25,6 +26,12 @@ word sigma0(word x);
 word sigma1(word x);
 word sigmoid0(word x);
 word sigmoid1(word x);
+
+void SHA256_init_hash(word* hash);
+void SHA256_message(word* hash, word* msg);
+void SHA256_string(char* dest, char* src);
+void SHA256_file(char* dest, char* filename);
+
 /*
 These are the fractional parts of the cube root of the first 64 prime numbers in hex.
 I was too lazy to calculate them myself, but I may calculate them myself later
@@ -40,143 +47,86 @@ word k[] = {0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x
 
 int main(int argc, char** argv){
 
-	FILE* fp;
+	char dest[512];
+	char src[512] = "This is a test";
+
+	SHA256_string(dest,src);
+	printf("%s\n", dest);
+
+	/*FILE* fp;
 
 	int continueReading = 1;
 	int paddingNext = 0;
 	int64_t fileSize = 0;
 	int fileSizeToAdd;
 	//Why these values? They're the first fractional part of the square root of the first 8 prime numbers, I think...
-	word hash[HASH_SIZE] = {0x6a09e667, 0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
-	word addToHash[HASH_SIZE];
+	word hash[HASH_SIZE];
 	word messageBuffer[MESSAGE_SIZE];
 	//This is when you can't fit the padding into the last 2 words, so you need a whole new message, which is annoying.
 	word paddingMessageBuffer[MESSAGE_SIZE];
-
-	for(int x = 0; x < MESSAGE_SIZE; x++) paddingMessageBuffer[x] = 0;
-
-	word block[BLOCK_SIZE];
-
-	word testMessage[MESSAGE_SIZE] = {0x61626364, 0x62636465, 0x63646566, 0x64656667, 0x65666768, 0x66676869, 0x6768696a, 0x68696a6b, 0x696a6b6c, 0x6a6b6c6d, 0x6b6c6d6e, 0x6c6d6e6f, 0x6d6e6f70, 0x6e6f7071, 0x80000000, 0x00000000};
+	memset(paddingMessageBuffer,0,MESSAGE_SIZE*WORD_SIZE);
 
 	if(argc > 1) fp = fopen(argv[1], "r");
-	else fp = fopen("test1.txt","r");
+	else fp = stdin;
+
+	SHA256_init_hash(hash);
 
 	while( continueReading ){
 
 		//First, we read the text in 512 bit blocks, and if we reach the end we pad the text out so that it is 512 bits
 
 		fileSizeToAdd = 0;
-		if(!paddingNext){
-			for(int x = 0; x < MESSAGE_SIZE; x++){
-				int toAdd = fread(messageBuffer + x, sizeof(char), sizeof(word), fp);
-				messageBuffer[x] = flipBytes(messageBuffer[x]);
-				fileSize += toAdd * 8;
 
-				//It's padding time! Yay!
-				//We pad if we reach the end of the file before we can fill all the blocks inside of the message buffer;
-				if(toAdd != sizeof(word)){
-					word temp;
+		memset(messageBuffer,0,MESSAGE_SIZE*WORD_SIZE);
 
-					//First, we append a 1 to the end of the data. This is just for handling some edge cases
-					if(fileSize % 32 == 0){
-						messageBuffer[x] = 0x80000000;
-					}
-					else{
-						temp = (0xffffffff << (32 - fileSize % 32));
-						messageBuffer[x] &= temp;
+		fileSizeToAdd = fread(messageBuffer,1,sizeof(word)*MESSAGE_SIZE,fp);
+		for(int x = 0; x < MESSAGE_SIZE; x++) messageBuffer[x] = flipBytes(messageBuffer[x]);
 
-						temp = 0x80000000;
-						temp = rotateRight(temp, (fileSize % 32) );
-						messageBuffer[x] = messageBuffer[x] |temp;
-					}
-					
-					//We set the rest of the data in the message buffer to zero
-					for(int rest = x + 1; rest < MESSAGE_SIZE; rest++) messageBuffer[rest] = 0;
+		fileSize += fileSizeToAdd * 8;
 
-					//Then, at the end, we append the length of the file in bits.
-					if(x < MESSAGE_SIZE - 2){
+		if(fileSizeToAdd != WORD_SIZE*MESSAGE_SIZE){
 
-						int64_t longLongSize = (int64_t) fileSize;
+			word temp;
+			int fileQuo,fileRem;
 
-						messageBuffer[MESSAGE_SIZE - 2] = longLongSize << 32;
-						messageBuffer[MESSAGE_SIZE - 1] = longLongSize & 0xffffffff;
+			if(!paddingNext){
+				fileQuo = fileSizeToAdd / WORD_SIZE;
+				fileRem = fileSizeToAdd % WORD_SIZE;
 
-						continueReading = 0;
-					} else {
-						int64_t longLongSize = (int64_t) fileSize;
+				temp = 0xffffffff;
 
-						paddingMessageBuffer[MESSAGE_SIZE - 2] = longLongSize << 32;
-						paddingMessageBuffer[MESSAGE_SIZE - 1] = longLongSize & 0xffffffff;
-					}					
-					break;
-				}
+				temp <<= (WORD_SIZE-fileRem)*8;
+				messageBuffer[fileQuo] &= temp;
+
+				temp = 0x80000000;
+
+				temp = rotateRight(temp,fileRem*8);
+				messageBuffer[fileQuo] |= temp;
 			}
 
+			//printMessage(messageBuffer);
+
+
+			if(fileSizeToAdd <= ((MESSAGE_SIZE - 2) * WORD_SIZE)){
+				messageBuffer[MESSAGE_SIZE-2] = fileSize >> 32;
+				messageBuffer[MESSAGE_SIZE-1] = fileSize & 0xffffffff;
+				continueReading = 0;
+			} else {
+				paddingMessageBuffer[MESSAGE_SIZE-2] = fileSize >> 32;
+				paddingMessageBuffer[MESSAGE_SIZE-1] = fileSize & 0xffffffff;
+			}
 		}
+		//printMessage(messageBuffer);
 
 		//Now, we set the first 16 blocks to the message blocks
 		//Sometimes we need an extra "padded message buffer" since we don't have enough space in the previous buffer to include the size of the file.
 
 		if(paddingNext){
-			for(int x = 0; x < MESSAGE_SIZE; x++){
-				block[x] = paddingMessageBuffer[x];
-			}
+			SHA256_message(hash,paddingMessageBuffer);
 			continueReading = 0;
 		}
 		else{
-			for(int x = 0; x < MESSAGE_SIZE; x++){
-				block[x] = messageBuffer[x];
-			}
-		}
-
-
-		//For the rest of the blocks, we set them to specific values based on the previous blocks
-
-		for(int x = MESSAGE_SIZE; x < BLOCK_SIZE; x++){
-			block[x] = sigmoid1(block[x-2]) + block[x - 7] + sigmoid0(block[x-15]) + block[x-16];
-		}
-
-		//Now, we need to do BLOCK_SIZE rounds of just switching stuff around.
-		//This is the main loop!
-
-
-		//We create new variables that we will add to the hash later
-		//We initalize these variables currently to the current hash's values
-
-		for(int x = 0; x < HASH_SIZE; x++){
-			addToHash[x] = hash[x];
-		}
-
-		//For BLOCK_SIZE rounds, we do some operations that involve shifting and setting new values
-
-		for(int j = 0; j < BLOCK_SIZE; j++){
-
-			word t1 = addToHash[7] + sigma1(addToHash[4]) + Ch(addToHash[4],addToHash[5],addToHash[6]) + k[j] + block[j];
-
-			word t2 = sigma0(addToHash[0]) + Maj(addToHash[0],addToHash[1],addToHash[2]);
-
-			addToHash[7] = addToHash[6];
-			addToHash[6] = addToHash[5];
-			addToHash[5] = addToHash[4];
-			addToHash[4] = addToHash[3] + t1;
-			addToHash[3] = addToHash[2];
-			addToHash[2] = addToHash[1];
-			addToHash[1] = addToHash[0];
-			addToHash[0] = t1 + t2;
-
-			//This is just for printing the hash as it goes through the main loop
-
-			/*printf("j = %d\t",j);
-			for(int x = 0; x < HASH_SIZE; x++){
-				printf("%x\t", addToHash[x]);
-			}
-			printf("\n");*/
-
-		}
-
-		for(int x = 0; x < HASH_SIZE; x++){
-			hash[x] += addToHash[x];
+			SHA256_message(hash,messageBuffer);
 		}
 
 		if(paddingMessageBuffer[MESSAGE_SIZE - 1] != 0){
@@ -187,17 +137,17 @@ int main(int argc, char** argv){
 
 	//This is for printing the hash
 
-	printf("This is your finished hash: ");
+	//printf("This is your finished hash: ");
 
 	for(int x = 0; x < HASH_SIZE; x++){
-		printf("%8.X ", hash[x]);
+		printf("%08X", hash[x]);
 	}
 
 	printf("\n");
 
-	fclose(fp);
-	return 0;
+	if(fp != stdout)fclose(fp);*/
 
+	return 0;
 }
 
 char* getWordBits(word w){
@@ -215,7 +165,7 @@ char* getWordBits(word w){
 
 void printMessage(word* message){
 	for(int x = 0; x < MESSAGE_SIZE; x++){
-		printf("%08x ",message[x]);
+		printf("%08X ",message[x]);
 	}
 	printf("\n");
 }
@@ -265,17 +215,138 @@ word flipBytes(word toFlip){
 
 	for(int x = 0; x < 3; x++){
 		temp = remainder & 0xff000000;
-		flipped = flipped | temp;
+		flipped |= temp;
 
-		flipped = flipped >> 8;
-		flipped = flipped & 0x00ffffff;
-		remainder = remainder << 8;
+		flipped >>= 8;
+		flipped &= 0x00ffffff;
+		remainder <<= 8;
 
 	}
 
 	temp = remainder & 0xff000000;
 
-	flipped = flipped | temp;
+	flipped |= temp;
 
 	return flipped;
+}
+
+void SHA256_init_hash(word* hash){
+	hash[0] = 0x6a09e667;
+	hash[1] = 0xbb67ae85;
+	hash[2] = 0x3c6ef372;
+	hash[3] = 0xa54ff53a;
+	hash[4] = 0x510e527f;
+	hash[5] = 0x9b05688c;
+	hash[6] = 0x1f83d9ab;
+	hash[7] = 0x5be0cd19;
+}
+
+void SHA256_message(word* hash, word* msg){
+
+	word addToHash[HASH_SIZE];
+	word block[BLOCK_SIZE];
+
+	for(int x = 0; x < MESSAGE_SIZE; x++) block[x] = msg[x];
+
+
+	for(int x = MESSAGE_SIZE; x < BLOCK_SIZE; x++){
+		block[x] = sigmoid1(block[x-2]) + block[x - 7] + sigmoid0(block[x-15]) + block[x-16];
+	}
+
+	//Now, we need to do BLOCK_SIZE rounds of just switching stuff around.
+	//This is the main loop!
+
+
+	//We create new variables that we will add to the hash later
+	//We initalize these variables currently to the current hash's values
+
+	for(int x = 0; x < HASH_SIZE; x++){
+		addToHash[x] = hash[x];
+	}
+
+	//For BLOCK_SIZE rounds, we do some operations that involve shifting and setting new values
+
+	for(int j = 0; j < BLOCK_SIZE; j++){
+
+		word t1 = addToHash[7] + sigma1(addToHash[4]) + Ch(addToHash[4],addToHash[5],addToHash[6]) + k[j] + block[j];
+
+		word t2 = sigma0(addToHash[0]) + Maj(addToHash[0],addToHash[1],addToHash[2]);
+
+		addToHash[7] = addToHash[6];
+		addToHash[6] = addToHash[5];
+		addToHash[5] = addToHash[4];
+		addToHash[4] = addToHash[3] + t1;
+		addToHash[3] = addToHash[2];
+		addToHash[2] = addToHash[1];
+		addToHash[1] = addToHash[0];
+		addToHash[0] = t1 + t2;
+
+		//This is just for printing the hash as it goes through the main loop
+
+		/*printf("j = %d\t",j);
+		for(int x = 0; x < HASH_SIZE; x++){
+			printf("%x\t", addToHash[x]);
+		}
+		printf("\n");*/
+	}
+
+	for(int x = 0; x < HASH_SIZE; x++){
+		hash[x] += addToHash[x];
+	}
+}
+
+void SHA256_string(char* dest, char* src){
+	int running = 1;
+	int sp = 0;
+	int doPadding = 0;
+	int64_t fileSize;
+
+	word msg[MESSAGE_SIZE];
+	word paddedMsg[MESSAGE_SIZE];
+	word hash[HASH_SIZE];
+
+	memset(paddedMsg,0,sizeof(word) * MESSAGE_SIZE);
+
+	SHA256_init_hash(hash);
+
+	while(running){
+
+		memset(msg,0,sizeof(word) * MESSAGE_SIZE);
+
+		if(doPadding) running = 0;
+		else {
+			for(int x = 0; x < MESSAGE_SIZE*sizeof(word); x++){
+				((char*)msg)[x] = src[sp];
+				if(src[sp] == '\0') {
+
+					fileSize = sp * 8;
+					((char*)msg)[x] = 0x80;
+
+					if(x > ((MESSAGE_SIZE-2) * sizeof(word))) {
+						paddedMsg[MESSAGE_SIZE-2] = fileSize >> 32;
+						paddedMsg[MESSAGE_SIZE-1] = fileSize & 0xffffffff;
+					}
+					else{
+						msg[MESSAGE_SIZE-2] = fileSize >> 32;
+						msg[MESSAGE_SIZE-2] = flipBytes(msg[MESSAGE_SIZE-2]);
+						msg[MESSAGE_SIZE-1] = fileSize & 0xffffffff;
+						msg[MESSAGE_SIZE-1] = flipBytes(msg[MESSAGE_SIZE-1]);
+						running = 0;
+					}
+
+					break;
+				}
+				sp++;
+			}
+			for(int x = 0; x < MESSAGE_SIZE; x++) msg[x] = flipBytes(msg[x]);
+		}
+
+		//printMessage(msg);
+
+		if(doPadding) SHA256_message(hash,paddedMsg);
+		else SHA256_message(hash,msg);
+
+		if(paddedMsg[MESSAGE_SIZE-1]) doPadding = 1;
+	}
+	sprintf(dest,"%08X%08X%08X%08X%08X%08X%08X%08X",hash[0],hash[1],hash[2],hash[3],hash[4],hash[5],hash[6],hash[7]);
 }
